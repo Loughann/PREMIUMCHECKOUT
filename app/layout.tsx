@@ -3,7 +3,7 @@ import type { Metadata } from "next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Premium Checkout",
+  title: "Whats Checkout",
   description: "Created with v0",
   generator: "v0.dev",
 }

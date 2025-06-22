@@ -108,11 +108,6 @@ export default function CheckoutPage() {
       setPixCode(data.pixCode)
       setTransactionId(data.transactionId)
       setPaymentStatus("pending")
-
-      // Dispara o evento Purchase ao gerar o PIX
-      if (typeof window !== "undefined" && (window as any).fbq) {
-        ;(window as any).fbq("track", "Purchase", { value: totalAmount, currency: "BRL" })
-      }
     } catch (err) {
       console.error(err)
       alert("Erro ao gerar PIX.")
@@ -153,7 +148,7 @@ export default function CheckoutPage() {
     }
 
     if (transactionId && paymentStatus === "pending") {
-      intervalRef.current = setInterval(() => handleVerifyPix(transactionId), 5000)
+      intervalRef.current = setInterval(() => handleVerifyPix(transactionId), 4000) // Alterado de 5000 para 4000
     }
     if (paymentStatus === "completed") {
       // Redireciona para a página de obrigado quando o pagamento é concluído
@@ -290,7 +285,7 @@ export default function CheckoutPage() {
 
           {/* COBRANÇA */}
           <div>
-            <h2 className="text-xl font-bold text-foreground mb-3">Envio do relatório completo</h2>
+            <h2 className="text-xl font-bold text-foreground mb-3">Envio do acesso premium</h2>
             <Label htmlFor="customerEmail" className="text-foreground font-medium">
               E-mail *
             </Label>
@@ -306,7 +301,7 @@ export default function CheckoutPage() {
               }`}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Precisamos apenas do seu e-mail para enviar o relatório completo de forma segura e anônima
+              Precisamos apenas do seu e-mail para enviar o acesso premium de forma segura e anônima
             </p>
           </div>
 
