@@ -47,6 +47,16 @@ interface VerifyPixResponse {
   status: "pending" | "completed" | "failed"
 }
 
+// -------- FUNÇÕES DO PIXEL --------
+const trackPixelEvent = (eventName: string, parameters?: any) => {
+  if (typeof window !== "undefined" && (window as any).fbq) {
+    console.log(`🔥 Disparando evento Pixel: ${eventName}`, parameters)
+    ;(window as any).fbq("track", eventName, parameters)
+  } else {
+    console.warn("⚠️ Facebook Pixel não encontrado")
+  }
+}
+
 // -------- COMPONENTE --------
 export default function CheckoutPage() {
   const router = useRouter() // Inicializar useRouter
@@ -55,15 +65,16 @@ export default function CheckoutPage() {
   const [paymentStatus, setPaymentStatus] = useState<"pending" | "completed" | "failed" | null>(null)
   const [isLoadingPix, setIsLoadingPix] = useState(false)
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false)
+  const [purchaseEventFired, setPurchaseEventFired] = useState(false) // Flag para controlar o evento Purchase
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const [customerEmail, setCustomerEmail] = useState("")
 
-  const itemTitle = "BLCKX7" // Nome do produto para a API
+  const itemTitle = "ESPIÃO PREMIUM" // Nome do produto para a API
   const itemPrice = 9.9
   const totalAmount = 9.9
 
-  const description = "Pagamento do BLCKX7" // Descrição para a API
+  const description = "Pagamento do ESPIÃO PREMIUM" // Descrição para a API
 
   async function handleGeneratePix() {
     if (!customerEmail) {
@@ -75,18 +86,28 @@ export default function CheckoutPage() {
     setPixCode(null)
     setTransactionId(null)
     setPaymentStatus(null)
+    setPurchaseEventFired(false) // Reset da flag
+
+    // Evento: Usuário iniciou o processo de pagamento
+    trackPixelEvent("InitiateCheckout", {
+      value: totalAmount,
+      currency: "BRL",
+      content_name: itemTitle,
+      content_category: "Digital Product",
+      num_items: 1,
+    })
 
     const payload: GeneratePixPayload = {
       amount: Math.round(totalAmount * 100),
       description,
       customer: {
-        name: "Cliente Tinder",
+        name: "Cliente Premium",
         document: "000.000.000-00",
         phone: "00000000000",
         email: customerEmail,
       },
       item: {
-        title: itemTitle, // Usando o nome do produto para a API
+        title: itemTitle,
         price: Math.round(itemPrice * 100),
         quantity: 1,
       },
@@ -108,8 +129,18 @@ export default function CheckoutPage() {
       setPixCode(data.pixCode)
       setTransactionId(data.transactionId)
       setPaymentStatus("pending")
+
+      // Evento: PIX gerado com sucesso (informações de pagamento adicionadas)
+      trackPixelEvent("AddPaymentInfo", {
+        value: totalAmount,
+        currency: "BRL",
+        content_name: itemTitle,
+        payment_type: "PIX",
+      })
+
+      console.log("✅ PIX gerado com sucesso:", data.transactionId)
     } catch (err) {
-      console.error(err)
+      console.error("❌ Erro ao gerar PIX:", err)
       alert("Erro ao gerar PIX.")
       setPaymentStatus("failed")
     } finally {
@@ -119,6 +150,8 @@ export default function CheckoutPage() {
 
   async function handleVerifyPix(paymentId: string) {
     setIsVerifyingPayment(true)
+    console.log("🔍 Verificando pagamento:", paymentId)
+
     try {
       const res = await fetch("https://api-checkoutinho.up.railway.app/verify", {
         method: "POST",
@@ -127,14 +160,29 @@ export default function CheckoutPage() {
       })
       if (!res.ok) throw new Error(res.statusText)
       const data: VerifyPixResponse = await res.json()
+
+      console.log("📊 Status do pagamento:", data.status)
       setPaymentStatus(data.status)
 
-      // Dispara o evento Purchase ao confirmar o pagamento como concluído
-      if (data.status === "completed" && typeof window !== "undefined" && (window as any).fbq) {
-        ;(window as any).fbq("track", "Purchase", { value: totalAmount, currency: "BRL" })
+      // Evento: Pagamento aprovado - COMPRA CONFIRMADA (APENAS UMA VEZ)
+      if (data.status === "completed" && !purchaseEventFired) {
+        console.log("🎉 PAGAMENTO EFETUADO! Disparando evento Purchase ÚNICO")
+        trackPixelEvent("Purchase", {
+          value: totalAmount,
+          currency: "BRL",
+          content_name: itemTitle,
+          content_category: "Digital Product",
+          content_ids: [itemTitle],
+          num_items: 1,
+          transaction_id: paymentId,
+        })
+        setPurchaseEventFired(true) // Marca que o evento já foi disparado
+        console.log("✅ Evento Purchase disparado com sucesso - não será disparado novamente")
+      } else if (data.status === "completed" && purchaseEventFired) {
+        console.log("⚠️ Pagamento já processado - evento Purchase não será disparado novamente")
       }
     } catch (err) {
-      console.error(err)
+      console.error("❌ Erro ao verificar pagamento:", err)
       setPaymentStatus("failed")
     } finally {
       setIsVerifyingPayment(false)
@@ -142,16 +190,20 @@ export default function CheckoutPage() {
   }
 
   useEffect(() => {
-    // Dispara o evento InitializeCheckout quando o componente é montado
-    if (typeof window !== "undefined" && (window as any).fbq) {
-      ;(window as any).fbq("track", "InitiateCheckout")
-    }
+    // Evento: Página carregada (ViewContent)
+    trackPixelEvent("ViewContent", {
+      content_name: itemTitle,
+      content_category: "Digital Product",
+      value: totalAmount,
+      currency: "BRL",
+    })
 
     if (transactionId && paymentStatus === "pending") {
-      intervalRef.current = setInterval(() => handleVerifyPix(transactionId), 4000) // Alterado de 5000 para 4000
+      console.log("⏰ Iniciando verificação automática de pagamento a cada 4 segundos")
+      intervalRef.current = setInterval(() => handleVerifyPix(transactionId), 4000) // 4000ms = 4 segundos
     }
     if (paymentStatus === "completed") {
-      // Redireciona para a página de obrigado quando o pagamento é concluído
+      console.log("✅ Redirecionando para página de obrigado")
       router.push("/thank-you")
       if (intervalRef.current) clearInterval(intervalRef.current)
     } else if (paymentStatus !== "pending" && intervalRef.current) {
@@ -160,7 +212,7 @@ export default function CheckoutPage() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [transactionId, paymentStatus, router])
+  }, [transactionId, paymentStatus, router, itemTitle, totalAmount])
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative z-10">
@@ -170,8 +222,7 @@ export default function CheckoutPage() {
         <CardContent className="p-6 space-y-8">
           {/* HEADER */}
           <div className="text-center">
-            <h1 className="text-6xl font-extrabold uppercase text-[#00BFFF] text-glow-blue mb-2">{"ESPIÃO PREMIUM"}</h1>{" "}
-            {/* Título exibido */}
+            <h1 className="text-6xl font-extrabold uppercase text-[#00BFFF] text-glow-blue mb-2">{"ESPIÃO PREMIUM"}</h1>
             <p className="text-4xl font-extrabold text-primary-blue mb-2">
               R$ {totalAmount.toFixed(2).replace(".", ",")}
             </p>
@@ -223,7 +274,6 @@ export default function CheckoutPage() {
             </h2>
 
             <Label className="text-foreground font-medium mb-2 block">Método de Pagamento</Label>
-            {/* Ajustado para ter a mesma aparência do campo de e-mail */}
             <div className="w-full flex justify-start items-center border border-border font-normal py-2 px-3 rounded-md bg-white text-black mt-1">
               <Square className="h-5 w-5 fill-primary-blue text-primary-blue mr-3" />
               PIX - Pagamento Instantâneo
@@ -236,7 +286,6 @@ export default function CheckoutPage() {
               <Loader2 className="h-8 w-8 animate-spin text-primary-blue" />
             ) : pixCode ? (
               <div className="space-y-3 w-full">
-                {/* Novas informações e botão de copiar */}
                 <p className="text-center text-muted-foreground text-sm">
                   Escaneie o código QR com seu app do banco ou copie o código PIX
                 </p>
@@ -251,17 +300,24 @@ export default function CheckoutPage() {
                   <Copy className="h-4 w-4 mr-2" />
                   Copiar Código PIX
                 </Button>
-                {/* Fim das novas informações */}
 
                 <div className="flex flex-col items-center">
                   <QRCode value={pixCode} size={150} level="H" />
                   <p className="text-sm text-muted-foreground mt-1">Válido por 30 minutos</p>
-                  {/* Novo elemento de status */}
+
                   <div className="flex items-center justify-center border border-border rounded-full px-4 py-2 mt-2 bg-muted/20">
                     <Clock className="h-4 w-4 text-muted-foreground mr-2" />
-                    <span className="text-sm text-muted-foreground">Status: Aguardando Pagamento</span>
+                    <span className="text-sm text-muted-foreground">
+                      Status:{" "}
+                      {paymentStatus === "pending"
+                        ? "Aguardando Pagamento"
+                        : paymentStatus === "completed"
+                          ? "Pagamento Aprovado"
+                          : paymentStatus === "failed"
+                            ? "Pagamento Falhou"
+                            : "Aguardando"}
+                    </span>
                   </div>
-                  {/* Fim do novo elemento de status */}
 
                   <div className="text-center mt-4 p-3 bg-muted/10 rounded-lg border border-border">
                     <p className="text-sm text-muted-foreground">ID da Transação</p>
@@ -270,7 +326,7 @@ export default function CheckoutPage() {
 
                   <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1 mt-4">
                     <li>O pagamento será confirmado automaticamente</li>
-                    <li>Após o pagamento, você receberá o relatório por e-mail</li>
+                    <li>Após o pagamento, você receberá o acesso por e-mail</li>
                     <li>Em caso de dúvidas, guarde o ID da transação</li>
                   </ul>
                 </div>
@@ -278,7 +334,7 @@ export default function CheckoutPage() {
             ) : (
               <div className="text-center text-muted-foreground text-sm">
                 <div className="w-24 h-24 bg-muted/30 rounded-md mx-auto mb-2" />
-                Preencha seu e-mail e clique em “Gerar PIX” para continuar
+                Preencha seu e-mail e clique em "Gerar PIX" para continuar
               </div>
             )}
           </div>
@@ -324,7 +380,7 @@ export default function CheckoutPage() {
             )}
           </Button>
 
-          {/* SEÇÃO DE SEGURANÇA AGORA DENTRO DO CARD */}
+          {/* SEÇÃO DE SEGURANÇA */}
           <div className="text-center mt-4">
             <p className="text-muted-foreground text-sm flex items-center justify-center">
               <ShieldCheck className="h-4 w-4 text-muted mr-1" />
@@ -333,7 +389,7 @@ export default function CheckoutPage() {
             <p className="text-xs text-muted-foreground mt-1">Seus dados estão protegidos por SSL de 256 bits</p>
           </div>
 
-          {/* SEÇÃO DE DEPOIMENTOS AGORA DENTRO DO CARD */}
+          {/* SEÇÃO DE DEPOIMENTOS */}
           <div className="w-full space-y-6 pt-4">
             <h2 className="text-xl font-bold text-foreground flex items-center">
               <Star className="h-6 w-6 fill-yellow-500 text-yellow-500 mr-2" />O que nossos clientes dizem
