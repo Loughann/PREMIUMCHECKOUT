@@ -2,7 +2,7 @@
 
 import type * as React from "react"
 import { useState, useEffect, useRef } from "react"
-import { useRouter } from "next/navigation" // Importar useRouter
+import { useRouter, useSearchParams } from "next/navigation" // Importar useSearchParams
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -47,25 +47,15 @@ interface VerifyPixResponse {
   status: "pending" | "completed" | "failed"
 }
 
-// -------- FUNÇÕES DO PIXEL --------
-const trackPixelEvent = (eventName: string, parameters?: any) => {
-  if (typeof window !== "undefined" && (window as any).fbq) {
-    console.log(`🔥 Disparando evento Pixel: ${eventName}`, parameters)
-    ;(window as any).fbq("track", eventName, parameters)
-  } else {
-    console.warn("⚠️ Facebook Pixel não encontrado")
-  }
-}
-
 // -------- COMPONENTE --------
 export default function CheckoutPage() {
   const router = useRouter() // Inicializar useRouter
+  const searchParams = useSearchParams() // Para capturar parâmetros da URL
   const [pixCode, setPixCode] = useState<string | null>(null)
   const [transactionId, setTransactionId] = useState<string | null>(null)
   const [paymentStatus, setPaymentStatus] = useState<"pending" | "completed" | "failed" | null>(null)
   const [isLoadingPix, setIsLoadingPix] = useState(false)
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false)
-  const [purchaseEventFired, setPurchaseEventFired] = useState(false) // Flag para controlar o evento Purchase
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const [customerEmail, setCustomerEmail] = useState("")
@@ -75,6 +65,25 @@ export default function CheckoutPage() {
   const totalAmount = 9.9
 
   const description = "Pagamento do ESPIÃO PREMIUM" // Descrição para a API
+
+  // Função para capturar todos os parâmetros da URL
+  const getUrlParameters = () => {
+    const params: string[] = []
+
+    // Iterar por todos os parâmetros da URL
+    searchParams.forEach((value, key) => {
+      params.push(`${key}=${encodeURIComponent(value)}`)
+    })
+
+    // Se não houver parâmetros, retorna string padrão
+    const utmString = params.length > 0 ? params.join("&") : "checkout-v0"
+
+    console.log("📊 Parâmetros da URL capturados:", utmString)
+    console.log("📊 Exemplo de URL: ?utm_source=FB&utm_campaign=loonova&pedido=20")
+    console.log("📊 Resultado enviado para API:", utmString)
+
+    return utmString
+  }
 
   async function handleGeneratePix() {
     if (!customerEmail) {
@@ -86,16 +95,9 @@ export default function CheckoutPage() {
     setPixCode(null)
     setTransactionId(null)
     setPaymentStatus(null)
-    setPurchaseEventFired(false) // Reset da flag
 
-    // Evento: Usuário iniciou o processo de pagamento
-    trackPixelEvent("InitiateCheckout", {
-      value: totalAmount,
-      currency: "BRL",
-      content_name: itemTitle,
-      content_category: "Digital Product",
-      num_items: 1,
-    })
+    // Capturar parâmetros da URL para o campo utm
+    const utmParameters = getUrlParameters()
 
     const payload: GeneratePixPayload = {
       amount: Math.round(totalAmount * 100),
@@ -111,8 +113,10 @@ export default function CheckoutPage() {
         price: Math.round(itemPrice * 100),
         quantity: 1,
       },
-      utm: "checkout-v0",
+      utm: utmParameters, // Todos os parâmetros da URL como string
     }
+
+    console.log("🚀 Payload enviado para API:", payload)
 
     try {
       const res = await fetch(
@@ -129,14 +133,6 @@ export default function CheckoutPage() {
       setPixCode(data.pixCode)
       setTransactionId(data.transactionId)
       setPaymentStatus("pending")
-
-      // Evento: PIX gerado com sucesso (informações de pagamento adicionadas)
-      trackPixelEvent("AddPaymentInfo", {
-        value: totalAmount,
-        currency: "BRL",
-        content_name: itemTitle,
-        payment_type: "PIX",
-      })
 
       console.log("✅ PIX gerado com sucesso:", data.transactionId)
     } catch (err) {
@@ -164,22 +160,8 @@ export default function CheckoutPage() {
       console.log("📊 Status do pagamento:", data.status)
       setPaymentStatus(data.status)
 
-      // Evento: Pagamento aprovado - COMPRA CONFIRMADA (APENAS UMA VEZ)
-      if (data.status === "completed" && !purchaseEventFired) {
-        console.log("🎉 PAGAMENTO EFETUADO! Disparando evento Purchase ÚNICO")
-        trackPixelEvent("Purchase", {
-          value: totalAmount,
-          currency: "BRL",
-          content_name: itemTitle,
-          content_category: "Digital Product",
-          content_ids: [itemTitle],
-          num_items: 1,
-          transaction_id: paymentId,
-        })
-        setPurchaseEventFired(true) // Marca que o evento já foi disparado
-        console.log("✅ Evento Purchase disparado com sucesso - não será disparado novamente")
-      } else if (data.status === "completed" && purchaseEventFired) {
-        console.log("⚠️ Pagamento já processado - evento Purchase não será disparado novamente")
+      if (data.status === "completed") {
+        console.log("🎉 PAGAMENTO APROVADO!")
       }
     } catch (err) {
       console.error("❌ Erro ao verificar pagamento:", err)
@@ -190,17 +172,9 @@ export default function CheckoutPage() {
   }
 
   useEffect(() => {
-    // Evento: Página carregada (ViewContent)
-    trackPixelEvent("ViewContent", {
-      content_name: itemTitle,
-      content_category: "Digital Product",
-      value: totalAmount,
-      currency: "BRL",
-    })
-
     if (transactionId && paymentStatus === "pending") {
       console.log("⏰ Iniciando verificação automática de pagamento a cada 4 segundos")
-      intervalRef.current = setInterval(() => handleVerifyPix(transactionId), 4000) // 4000ms = 4 segundos
+      intervalRef.current = setInterval(() => handleVerifyPix(transactionId), 4000)
     }
     if (paymentStatus === "completed") {
       console.log("✅ Redirecionando para página de obrigado")
@@ -212,7 +186,7 @@ export default function CheckoutPage() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [transactionId, paymentStatus, router, itemTitle, totalAmount])
+  }, [transactionId, paymentStatus, router])
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative z-10">
