@@ -55,11 +55,27 @@ const config = {
           foreground: "#E0E0E0", // Texto do card
         },
         // Paleta de cores personalizada
+        pink: {
+          500: "#06b6d4", // Change to cyan blue
+        },
+        blue: {
+          50: "#eff6ff",
+          100: "#dbeafe",
+          200: "#bfdbfe",
+          300: "#93c5fd",
+          400: "#60a5fa",
+          500: "#3b82f6",
+          600: "#2563eb",
+          700: "#1d4ed8",
+          800: "#1e40af",
+          900: "#1e3a8a",
+        },
+        cyan: {
+          400: "#22d3ee",
+          500: "#06b6d4",
+        },
         yellow: {
           500: "#FFD700",
-        },
-        "primary-blue": {
-          DEFAULT: "#00BFFF", // Deep Sky Blue
         },
       },
       borderRadius: {
@@ -79,11 +95,11 @@ const config = {
         "pulse-blue": {
           "0%, 100%": {
             transform: "scale(1)",
-            "box-shadow": "0 0 0 0 rgba(0, 191, 255, 0.7)",
+            "box-shadow": "0 0 0 0 rgba(59, 130, 246, 0.7)",
           },
           "50%": {
             transform: "scale(1.02)",
-            "box-shadow": "0 0 0 10px rgba(0, 191, 255, 0)",
+            "box-shadow": "0 0 0 10px rgba(59, 130, 246, 0)",
           },
         },
       },
@@ -93,7 +109,9 @@ const config = {
         "pulse-blue": "pulse-blue 1.5s infinite",
       },
       textShadow: {
-        "blue-glow": "0 0 8px rgba(0, 191, 255, 0.8), 0 0 15px rgba(0, 191, 255, 0.6)",
+        "blue-glow": "0 0 8px rgba(59, 130, 246, 0.8), 0 0 15px rgba(59, 130, 246, 0.6)",
+        "cyan-glow": "0 0 8px rgba(34, 211, 238, 0.8), 0 0 15px rgba(34, 211, 238, 0.6)",
+        "red-glow": "0 0 8px rgba(239, 68, 68, 0.8), 0 0 15px rgba(239, 68, 68, 0.6)",
       },
     },
   },
@@ -103,6 +121,12 @@ const config = {
       const newUtilities = {
         ".text-glow-blue": {
           "text-shadow": theme("textShadow.blue-glow"),
+        },
+        ".text-glow-cyan": {
+          "text-shadow": theme("textShadow.cyan-glow"),
+        },
+        ".text-glow-red": {
+          "text-shadow": theme("textShadow.red-glow"),
         },
       }
       addUtilities(newUtilities, ["responsive", "hover"])
